@@ -1,0 +1,45 @@
+# macOS / OS specific
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Logs & Temporary Files
+*.log
+backend.log
+
+# Java & Gradle (Backend)
+backend/.gradle/
+backend/build/
+backend/out/
+backend/bin/
+backend/.settings/
+backend/.classpath
+backend/.project
+backend/src/main/resources/static/*
+!backend/src/main/resources/static/.gitkeep
+
+# Node.js & React (Frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+
+# Agent & Temp artifacts
+.agent/
+openspec/.tmp/

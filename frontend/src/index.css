@@ -1,0 +1,90 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    background-color: #050914;
+    color: #e2e8f0;
+    font-family: 'Rajdhani', sans-serif;
+    overflow-x: hidden;
+}
+
+.cyber-panel {
+    background: rgba(9, 16, 31, 0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(0, 240, 255, 0.05);
+    position: relative;
+}
+
+.cyber-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.6), transparent);
+}
+
+.cyber-glow {
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+}
+
+.text-glow {
+    text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+}
+
+.text-glow-purple {
+    text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+}
+
+#fiberCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 0;
+    pointer-events: none;
+}
+
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(5, 9, 20, 0.8);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(0, 240, 255, 0.3);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 240, 255, 0.7);
+}
+
+.scanlines {
+    position: relative;
+}
+.scanlines::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0; left: 0; bottom: 0; right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+    background-size: 100% 4px;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.3;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.status-dot.healthy { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+.status-dot.warning { background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+.status-dot.critical { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; }

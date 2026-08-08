@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kubimetrics - VM & Cluster Command Center</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js for Grafana-style visualizers -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Futuristic Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800&family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cyber: {
+                            dark: '#050914',
+                            panel: 'rgba(11, 20, 38, 0.75)',
+                            border: 'rgba(56, 189, 248, 0.25)',
+                            accent: '#00f0ff',
+                            glow: '#3b82f6',
+                            purple: '#8b5cf6',
+                            warning: '#f59e0b',
+                            critical: '#ef4444',
+                            success: '#10b981'
+                        }
+                    },
+                    fontFamily: {
+                        orbitron: ['Orbitron', 'sans-serif'],
+                        rajdhani: ['Rajdhani', 'sans-serif'],
+                        mono: ['Share Tech Mono', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #050914;
+            color: #e2e8f0;
+            font-family: 'Rajdhani', sans-serif;
+            overflow-x: hidden;
+        }
+
+        .cyber-panel {
+            background: rgba(9, 16, 31, 0.75);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(0, 240, 255, 0.15);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(0, 240, 255, 0.05);
+            position: relative;
+        }
+
+        .cyber-panel::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(0, 240, 255, 0.6), transparent);
+        }
+
+        .cyber-glow {
+            box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+        }
+
+        .text-glow {
+            text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+        }
+
+        .text-glow-purple {
+            text-shadow: 0 0 8px rgba(139, 92, 246, 0.6);
+        }
+
+        /* Fiber background canvas positioning */
+        #fiberCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        /* Custom futuristic scrollbar */
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(5, 9, 20, 0.8);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 240, 255, 0.3);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 240, 255, 0.7);
+        }
+
+        /* Scanline HUD effect */
+        .scanlines {
+            position: relative;
+        }
+        .scanlines::after {
+            content: " ";
+            display: block;
+            position: absolute;
+            top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 2;
+            pointer-events: none;
+            opacity: 0.3;
+        }
+
+        /* Glowing Status Dots */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-dot.healthy { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
+        .status-dot.warning { background-color: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .status-dot.critical { background-color: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+        @keyframes pulse-slow {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+        }
+        .animate-pulse-slow {
+            animation: pulse-slow 3s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body class="scanlines text-slate-200">
+
+    <canvas id="fiberCanvas"></canvas>
+
+    <!-- Main Container -->
+    <div class="relative z-10 flex flex-col h-screen max-h-screen overflow-hidden p-3 gap-3">
+
+        <!-- Header / Grafana Navbar -->
+        <header class="cyber-panel rounded-lg px-4 py-2.5 flex flex-wrap items-center justify-between shrink-0 gap-3">
+            <div class="flex items-center gap-3">
+                <div class="relative flex items-center justify-center w-10 h-10 rounded-lg bg-blue-950/60 border border-cyan-500/40 text-cyan-400 cyber-glow">
+                    <i class="fa-solid fa-cubes-stacked text-xl"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="font-orbitron font-extrabold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">
+                            KUBIMETRICS
+                        </h1>
+                        <span class="px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 rounded-full">
+                            PROD-CLUSTER-01
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 font-mono flex items-center gap-2">
+                        <span><i class="fa-solid fa-network-wire text-cyan-400 text-[10px]"></i> 100 VM INSTANCES</span>
+                        <span class="text-slate-600">•</span>
+                        <span><i class="fa-solid fa-microchip text-indigo-400 text-[10px]"></i> 284 ACTIVE SERVICES</span>
+                    </p>
+                </div>
+            </div>
+
+            <!-- Time Control & Quick Filters -->
+            <div class="flex items-center gap-3">
+                <div class="flex items-center bg-slate-900/80 border border-slate-700/60 rounded-md p-1 font-mono text-xs">
+                    <button class="px-2.5 py-1 rounded bg-blue-600/40 text-cyan-300 border border-cyan-500/30 font-semibold shadow">5m</button>
+                    <button class="px-2.5 py-1 text-slate-400 hover:text-cyan-300 transition">15m</button>
+                    <button class="px-2.5 py-1 text-slate-400 hover:text-cyan-300 transition">1h</button>
+                    <button class="px-2.5 py-1 text-slate-400 hover:text-cyan-300 transition">24h</button>
+                    <span class="text-slate-600 px-1">|</span>
+                    <button class="px-2 text-cyan-400 hover:text-white"><i class="fa-solid fa-rotate text-xs"></i></button>
+                </div>
+
+                <div class="flex items-center gap-2 bg-slate-900/80 border border-slate-700/60 rounded-md px-3 py-1 text-xs">
+                    <span class="status-dot healthy animate-pulse"></span>
+                    <span class="font-mono text-emerald-400 font-bold">SYSTEM OPERATIONAL</span>
+                </div>
+
+                <div class="font-mono text-xs text-slate-400 hidden lg:block border-l border-slate-800 pl-3">
+                    <span id="utcClock" class="text-cyan-300 font-bold">00:00:00 UTC</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- KPI Metric Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 shrink-0">
+            <!-- Card 1: VM Health -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>VM STATUS</span>
+                    <i class="fa-solid fa-server text-cyan-400"></i>
+                </div>
+                <div class="my-1 flex items-baseline gap-2">
+                    <span class="font-orbitron text-2xl font-bold text-white text-glow">96</span>
+                    <span class="text-xs text-slate-400 font-mono">/ 100 Online</span>
+                </div>
+                <div class="w-full bg-slate-800/80 rounded-full h-1.5 overflow-hidden flex">
+                    <div class="bg-emerald-500 h-full" style="width: 96%"></div>
+                    <div class="bg-amber-500 h-full" style="width: 3%"></div>
+                    <div class="bg-red-500 h-full" style="width: 1%"></div>
+                </div>
+            </div>
+
+            <!-- Card 2: Kubiverse Pods -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>CLUSTER PODS</span>
+                    <i class="fa-solid fa-cubes text-purple-400"></i>
+                </div>
+                <div class="my-1 flex items-baseline gap-2">
+                    <span class="font-orbitron text-2xl font-bold text-white text-glow-purple">142</span>
+                    <span class="text-xs text-emerald-400 font-mono"><i class="fa-solid fa-caret-up"></i> 100% Ready</span>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono flex justify-between">
+                    <span>12 Worker Nodes</span>
+                    <span class="text-purple-300">v1.30.2</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Global CPU Load -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>AVG CPU LOAD</span>
+                    <i class="fa-solid fa-microchip text-blue-400"></i>
+                </div>
+                <div class="my-1 flex items-baseline justify-between">
+                    <span class="font-orbitron text-2xl font-bold text-cyan-300" id="avgCpuText">42.8%</span>
+                    <span class="text-[10px] font-mono text-cyan-400/80">384 Cores</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div id="avgCpuBar" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full transition-all duration-500" style="width: 42.8%"></div>
+                </div>
+            </div>
+
+            <!-- Card 4: Global Memory -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>RAM USAGE</span>
+                    <i class="fa-solid fa-memory text-indigo-400"></i>
+                </div>
+                <div class="my-1 flex items-baseline justify-between">
+                    <span class="font-orbitron text-2xl font-bold text-indigo-300">1.18 TB</span>
+                    <span class="text-[10px] font-mono text-slate-400">/ 1.53 TB</span>
+                </div>
+                <div class="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                    <div class="bg-gradient-to-r from-indigo-500 to-purple-400 h-full" style="width: 77%"></div>
+                </div>
+            </div>
+
+            <!-- Card 5: Fiber Network Mesh Flow -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>MESH TRAFFIC</span>
+                    <i class="fa-solid fa-bolt text-cyan-400 animate-pulse"></i>
+                </div>
+                <div class="my-1 flex items-baseline gap-2">
+                    <span class="font-orbitron text-2xl font-bold text-cyan-400">18.4</span>
+                    <span class="text-xs text-slate-400 font-mono">Gbps RX/TX</span>
+                </div>
+                <div class="text-[10px] text-cyan-300/70 font-mono flex justify-between">
+                    <span>Fibrous Latency</span>
+                    <span class="text-emerald-400">0.42 ms</span>
+                </div>
+            </div>
+
+            <!-- Card 6: Active Alerts -->
+            <div class="cyber-panel rounded-lg p-2.5 flex flex-col justify-between">
+                <div class="flex justify-between items-center text-xs text-slate-400 font-mono">
+                    <span>ACTIVE ALERTS</span>
+                    <i class="fa-solid fa-triangle-exclamation text-amber-400"></i>
+                </div>
+                <div class="my-1 flex items-center justify-between">
+                    <span class="font-orbitron text-2xl font-bold text-amber-400">3</span>
+                    <div class="flex gap-1 text-[10px] font-mono">
+                        <span class="px-1.5 py-0.5 rounded bg-red-950 text-red-400 border border-red-800/50">1 C</span>
+                        <span class="px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-800/50">2 W</span>
+                    </div>
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono truncate">
+                    Last: <span class="text-red-400">vm-db-042 OOM alert</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Content Area: Split View -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
+
+            <!-- LEFT/MIDDLE COLUMN (7 cols): Interactive Topology & Metrics -->
+            <div class="lg:col-span-7 flex flex-col gap-3 min-h-0">
+                
+                <!-- Kubiverse & Fiber Connectivity Diagram Panel -->
+                <div class="cyber-panel rounded-lg p-3 flex flex-col h-1/2 relative overflow-hidden">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-cyan-400 cyber-glow"></span>
+                            <h2 class="font-orbitron text-sm font-bold text-slate-200 tracking-wide">
+                                KUBIMETRICS VM TOPOLOGY MESH
+                            </h2>
+                        </div>
+                        <div class="flex gap-2 text-xs font-mono">
+                            <button id="viewClusterBtn" class="px-2 py-0.5 rounded bg-blue-900/60 border border-cyan-500/40 text-cyan-300">Cluster Core</button>
+                        </div>
+                    </div>
+
+                    <!-- Visualizer Interactive Overlay Canvas Container -->
+                    <div class="relative flex-1 bg-slate-950/60 rounded border border-slate-800/80 overflow-hidden flex items-center justify-center">
+                        <canvas id="topologyOverlay" class="absolute inset-0 w-full h-full cursor-grab"></canvas>
+
+                        <!-- Floating HUD Details Overlay -->
+                        <div class="absolute top-2 left-2 bg-slate-900/90 border border-cyan-500/30 p-2 rounded text-[11px] font-mono backdrop-blur pointer-events-none">
+                            <div class="text-cyan-400 font-bold mb-1"><i class="fa-solid fa-circle-nodes"></i> KUBIMETRICS CONTROL PLANE</div>
+                            <div class="text-slate-300">Nodes: 12 Active | Pods: 142 Running</div>
+                            <div class="text-slate-400">Ingress: NGINX / Gateway API</div>
+                        </div>
+
+                        <div class="absolute bottom-2 right-2 bg-slate-900/90 border border-slate-700/60 p-2 rounded text-[10px] font-mono flex items-center gap-3 pointer-events-none">
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-cyan-400"></span> K8s Pods</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-500"></span> VM Services</span>
+                            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Fiber Route</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Grafana-style Time Series Panel -->
+                <div class="cyber-panel rounded-lg p-3 flex flex-col h-1/2 min-h-0">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-chart-line text-cyan-400"></i>
+                            <h2 class="font-orbitron text-sm font-bold text-slate-200 tracking-wide">
+                                INFRASTRUCTURE METRICS & THROUGHPUT
+                            </h2>
+                        </div>
+                        <div class="flex items-center gap-3 text-xs font-mono">
+                            <span class="text-cyan-400 flex items-center gap-1"><span class="w-3 h-0.5 bg-cyan-400 inline-block"></span> Kubiverse Pod CPU</span>
+                            <span class="text-purple-400 flex items-center gap-1"><span class="w-3 h-0.5 bg-purple-400 inline-block"></span> 100 VMs Avg CPU</span>
+                        </div>
+                    </div>
+                    <div class="relative flex-1 w-full min-h-0">
+                        <canvas id="grafanaChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN (5 cols): 100 VM Matrix Operations Panel -->
+            <div class="lg:col-span-5 flex flex-col gap-3 min-h-0">
+                <div class="cyber-panel rounded-lg p-3 flex flex-col h-full min-h-0">
+                    <!-- Title & Search Controls -->
+                    <div class="flex items-center justify-between mb-2 shrink-0">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-border-all text-cyan-400"></i>
+                            <h2 class="font-orbitron text-sm font-bold text-slate-200 tracking-wide">
+                                100 VM MATRIX OPERATIONS
+                            </h2>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="statusFilter" class="bg-slate-900 border border-slate-700 text-slate-300 font-mono text-xs rounded px-2 py-1 focus:outline-none focus:border-cyan-500">
+                                <option value="all">All States (100)</option>
+                                <option value="healthy">Healthy (96)</option>
+                                <option value="warning">Warning (3)</option>
+                                <option value="critical">Critical (1)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Search Input Filter -->
+                    <div class="mb-2 shrink-0">
+                        <div class="relative">
+                            <i class="fa-solid fa-magnifying-glass absolute left-2.5 top-2.5 text-slate-500 text-xs"></i>
+                            <input type="text" id="vmSearchInput" placeholder="Filter by VM name, IP, or service..." 
+                                class="w-full bg-slate-950/80 border border-slate-800 rounded pl-8 pr-3 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500 transition">
+                        </div>
+                    </div>
+
+                    <!-- 100 VM Interactive Tile Grid Matrix -->
+                    <div id="vmMatrixGrid" class="flex-1 min-h-0 overflow-y-auto grid grid-cols-5 sm:grid-cols-10 lg:grid-cols-5 xl:grid-cols-10 gap-1.5 p-1 bg-slate-950/40 rounded border border-slate-800/80">
+                        <!-- JS populated -->
+                    </div>
+
+                    <!-- Hover Quick Inspector Display -->
+                    <div id="inspectorContent" class="mt-2 p-2 bg-slate-900/90 border border-cyan-500/30 rounded text-xs font-mono flex flex-wrap justify-between items-center shrink-0 min-h-[38px] text-slate-300">
+                        <span class="text-slate-500 italic flex items-center gap-1.5"><i class="fa-solid fa-hand-pointer text-cyan-400"></i> Hover over any VM node to view instant telemetry...</span>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- AI Ops Copilot Drawer Side Panel -->
+    <div id="aiCopilotDrawer" class="fixed top-0 right-0 bottom-0 z-50 w-full max-w-lg bg-slate-950/95 border-l border-cyan-500/30 backdrop-blur-xl shadow-2xl flex flex-col transform translate-x-full transition-transform duration-300">
+        <!-- Copilot Header -->
+        <div class="p-4 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded bg-cyan-950 border border-cyan-500/40 flex items-center justify-center text-cyan-400 cyber-glow">
+                    <i class="fa-solid fa-robot"></i>
+                </div>
+                <div>
+                    <h3 class="font-orbitron font-bold text-sm text-cyan-300 tracking-wider">GEMINI AI OPS COPILOT</h3>
+                    <p class="text-[10px] text-slate-400 font-mono">Infrastructure Telemetry & Diagnostic Engine</p>
+                </div>
+            </div>
+            <button id="closeCopilotBtn" class="text-slate-400 hover:text-white p-1">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <!-- Copilot Quick Prompt Presets -->
+        <div class="p-3 bg-slate-900/40 border-b border-slate-800/80 font-mono text-[11px] flex flex-wrap gap-2">
+            <button id="btnPromptAlerts" class="px-2.5 py-1 rounded bg-slate-800 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 transition">
+                🚨 Auto-Diagnose Active Alerts
+            </button>
+            <button id="btnPromptLimits" class="px-2.5 py-1 rounded bg-slate-800 border border-purple-500/30 hover:border-purple-400 text-purple-300 transition">
+                ⚡ Optimize K8s Pod Limits
+            </button>
+            <button id="btnPromptCve" class="px-2.5 py-1 rounded bg-slate-800 border border-amber-500/30 hover:border-amber-400 text-amber-300 transition">
+                🔍 Search K8s Security CVEs
+            </button>
+        </div>
+
+        <!-- Chat History Stream Area -->
+        <div id="aiChatStream" class="flex-1 p-4 overflow-y-auto font-mono text-xs space-y-4">
+            <div class="p-3 bg-slate-900/80 border border-cyan-500/20 rounded text-slate-300">
+                <span class="text-cyan-400 font-bold block mb-1">[GEMINI AI COPILOT INITIALIZED]</span>
+                Willkommen bei der Kubiverse Operations Intelligence. Ich überwache deine 100 VMs und den Kubernetes Cluster in Echtzeit. Frag mich nach Analysen, Shell-Befehlen oder Fehlerdiagnosen.
+            </div>
+        </div>
+
+        <!-- Citations / Grounding Sources Area -->
+        <div id="aiSourcesArea" class="hidden px-4 py-2 bg-slate-900/90 border-t border-slate-800 font-mono text-[10px]">
+            <span class="text-slate-400 font-bold"><i class="fa-solid fa-globe text-cyan-400"></i> Grounding Sources:</span>
+            <ul id="aiSourcesList" class="mt-1 space-y-0.5 text-cyan-300"></ul>
+        </div>
+
+        <!-- Chat Input Form -->
+        <form id="aiChatForm" class="p-3 border-t border-slate-800 bg-slate-900/90 flex gap-2">
+            <input type="text" id="aiInputPrompt" placeholder="Frage eingeben (z.B. 'Erstelle Skript für High CPU in vm-db-042')..."
+                class="flex-1 bg-slate-950 border border-slate-700 rounded px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500">
+            <button type="submit" id="aiSendBtn" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded font-mono text-xs font-bold transition flex items-center gap-1">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- VM & Services Detail Modal -->
+    <div id="detailModal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 hidden">
+        <div class="cyber-panel rounded-xl w-full max-w-2xl overflow-hidden shadow-2xl border border-cyan-500/40">
+            <!-- Modal Header -->
+            <div class="bg-slate-900/90 px-4 py-3 border-b border-slate-800 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <span id="modalStatusDot" class="status-dot healthy"></span>
+                    <h3 id="modalVmTitle" class="font-orbitron font-bold text-lg text-cyan-300">vm-prod-app-001</h3>
+                    <span id="modalIp" class="font-mono text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">10.240.4.12</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="closeModalBtn" class="text-slate-400 hover:text-white transition">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-4 flex flex-col gap-4 font-mono text-xs max-h-[80vh] overflow-y-auto">
+                <!-- System metrics overview -->
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="bg-slate-950/70 p-2.5 rounded border border-slate-800">
+                        <div class="text-slate-400 text-[10px]">CPU UTILIZATION</div>
+                        <div id="modalCpu" class="text-lg font-bold text-cyan-300 mt-0.5">34.2%</div>
+                        <div class="w-full bg-slate-800 h-1 mt-1 rounded-full overflow-hidden">
+                            <div id="modalCpuBar" class="bg-cyan-400 h-full" style="width: 34%"></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/70 p-2.5 rounded border border-slate-800">
+                        <div class="text-slate-400 text-[10px]">RAM ALLOCATION</div>
+                        <div id="modalRam" class="text-lg font-bold text-indigo-300 mt-0.5">12.4 / 16 GB</div>
+                        <div class="w-full bg-slate-800 h-1 mt-1 rounded-full overflow-hidden">
+                            <div id="modalRamBar" class="bg-indigo-400 h-full" style="width: 77%"></div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-950/70 p-2.5 rounded border border-slate-800">
+                        <div class="text-slate-400 text-[10px]">DISK I/O</div>
+                        <div id="modalDisk" class="text-lg font-bold text-emerald-400 mt-0.5">142 MB/s</div>
+                        <div class="text-[9px] text-slate-500">NVMe Array Tier 1</div>
+                    </div>
+                </div>
+
+                <!-- Hosted Services List -->
+                <div>
+                    <h4 class="text-cyan-400 font-bold mb-2 uppercase text-[11px] tracking-wider flex items-center gap-2">
+                        <i class="fa-solid fa-server"></i> Active Running Services (Host Level)
+                    </h4>
+                    <div id="modalServicesList" class="space-y-2">
+                        <!-- JS populated -->
+                    </div>
+                </div>
+
+                <!-- K8s Connection Link -->
+                <div class="p-2.5 bg-blue-950/30 border border-blue-500/20 rounded flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid fa-link text-cyan-400"></i>
+                        <span class="text-slate-300">Kubimetrics Node Affinity:</span>
+                        <span id="modalK8sNode" class="text-cyan-300 font-bold">k8s-node-worker-04</span>
+                    </div>
+                    <span class="text-[10px] text-slate-400">Kubernetes Subnet Tunnel Active</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ====================================================================
+           1. DATA GENERATION FOR 100 VIRTUAL MACHINES & SERVICES
+           ==================================================================== */
+        const vmData = [];
+        const serviceTypes = [
+            { name: "nginx-ingress-proxy", port: 443, type: "Web" },
+            { name: "postgresql-primary", port: 5432, type: "Database" },
+            { name: "redis-cache-cluster", port: 6379, type: "In-Memory" },
+            { name: "prometheus-node-exporter", port: 9100, type: "Monitoring" },
+            { name: "vector-log-agent", port: 8686, type: "Telemetry" },
+            { name: "app-backend-api", port: 8080, type: "Application" },
+            { name: "kafka-broker-node", port: 9092, type: "Queue" },
+            { name: "elasticsearch-data", port: 9200, type: "Search" }
+        ];
+
+        const roles = ["web", "db", "app", "cache", "queue", "infra"];
+
+        // Generate 100 realistic VMs
+        for (let i = 1; i <= 100; i++) {
+            const role = roles[Math.floor(Math.random() * roles.length)];
+            const paddedId = String(i).padStart(3, '0');
+            
+            let status = "healthy";
+            if (i === 42) status = "critical"; // vm-042
+            else if (i === 12 || i === 67 || i === 89) status = "warning";
+
+            const serviceCount = Math.random() > 0.5 ? 3 : 2;
+            const services = [];
+            const shuffled = [...serviceTypes].sort(() => 0.5 - Math.random());
+            for (let s = 0; s < serviceCount; s++) {
+                services.push({
+                    name: shuffled[s].name,
+                    port: shuffled[s].port,
+                    type: shuffled[s].type,
+                    status: (status === "critical" && s === 0) ? "stopped" : "running",
+                    cpu: (Math.random() * 25 + 5).toFixed(1) + "%"
+                });
+            }
+
+            vmData.push({
+                id: i,
+                name: `vm-${role}-${paddedId}`,
+                ip: `10.240.${Math.floor(i / 25) + 1}.${(i % 25) + 10}`,
+                role: role,
+                status: status,
+                cpu: status === "critical" ? 98.4 : status === "warning" ? (Math.random() * 20 + 75).toFixed(1) : (Math.random() * 40 + 10).toFixed(1),
+                ramGb: (Math.random() * 12 + 4).toFixed(1),
+                maxRam: 16,
+                diskMb: Math.floor(Math.random() * 200 + 50),
+                k8sNode: `kubimetrics-worker-${String((i % 12) + 1).padStart(2, '0')}`,
+                services: services
+            });
+        }
+
+        /* ====================================================================
+           2. STREAMING_CHUNK:Initializing fiber-optic background canvas animation...
+           ==================================================================== */
+        const canvas = document.getElementById('fiberCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const fibers = [];
+        const fiberCount = 45;
+
+        for (let i = 0; i < fiberCount; i++) {
+            fibers.push({
+                x1: Math.random() * canvas.width,
+                y1: Math.random() * canvas.height,
+                x2: Math.random() * canvas.width,
+                y2: Math.random() * canvas.height,
+                cp1x: Math.random() * canvas.width,
+                cp1y: Math.random() * canvas.height,
+                cp2x: Math.random() * canvas.width,
+                cp2y: Math.random() * canvas.height,
+                speed: Math.random() * 0.0008 + 0.0002,
+                progress: Math.random(),
+                width: Math.random() * 1.5 + 0.5,
+                color: Math.random() > 0.3 ? 'rgba(0, 240, 255, ' : 'rgba(59, 130, 246, '
+            });
+        }
+
+        function drawFibers() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            fibers.forEach(f => {
+                f.progress += f.speed;
+                if (f.progress > 1) f.progress = 0;
+
+                ctx.beginPath();
+                ctx.moveTo(f.x1, f.y1);
+                ctx.bezierCurveTo(f.cp1x, f.cp1y, f.cp2x, f.cp2y, f.x2, f.y2);
+                
+                ctx.strokeStyle = f.color + '0.12)';
+                ctx.lineWidth = f.width;
+                ctx.stroke();
+
+                const t = f.progress;
+                const cx = Math.pow(1-t,3)*f.x1 + 3*Math.pow(1-t,2)*t*f.cp1x + 3*(1-t)*Math.pow(t,2)*f.cp2x + Math.pow(t,3)*f.x2;
+                const cy = Math.pow(1-t,3)*f.y1 + 3*Math.pow(1-t,2)*t*f.cp1y + 3*(1-t)*Math.pow(t,2)*f.cp2y + Math.pow(t,3)*f.x2;
+
+                ctx.beginPath();
+                ctx.arc(cx, cy, f.width * 2, 0, Math.PI * 2);
+                ctx.fillStyle = '#00f0ff';
+                ctx.shadowBlur = 10;
+                ctx.shadowColor = '#00f0ff';
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            });
+
+            requestAnimationFrame(drawFibers);
+        }
+        drawFibers();
+
+        /* ====================================================================
+           3. STREAMING_CHUNK:Setting up Topology Overlay Canvas visualizer...
+           ==================================================================== */
+        const topoCanvas = document.getElementById('topologyOverlay');
+        const topoCtx = topoCanvas.getContext('2d');
+
+        function resizeTopoCanvas() {
+            if (!topoCanvas.parentElement) return;
+            topoCanvas.width = topoCanvas.parentElement.clientWidth;
+            topoCanvas.height = topoCanvas.parentElement.clientHeight;
+        }
+        window.addEventListener('resize', resizeTopoCanvas);
+        setTimeout(resizeTopoCanvas, 100);
+
+        let topoAngle = 0;
+        function drawTopologyOverlay() {
+            if (!topoCanvas.width) return;
+            topoCtx.clearRect(0, 0, topoCanvas.width, topoCanvas.height);
+            
+            const centerX = topoCanvas.width / 2;
+            const centerY = topoCanvas.height / 2;
+            const radius = Math.min(centerX, centerY) - 40;
+
+            topoAngle += 0.005;
+
+            // Central Hub
+            topoCtx.beginPath();
+            topoCtx.arc(centerX, centerY, 28, 0, Math.PI * 2);
+            topoCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            topoCtx.strokeStyle = '#00f0ff';
+            topoCtx.lineWidth = 2;
+            topoCtx.shadowBlur = 15;
+            topoCtx.shadowColor = '#00f0ff';
+            topoCtx.fill();
+            topoCtx.stroke();
+            topoCtx.shadowBlur = 0;
+
+            topoCtx.fillStyle = '#ffffff';
+            topoCtx.font = '10px Orbitron';
+            topoCtx.textAlign = 'center';
+            topoCtx.fillText('K8S CORE', centerX, centerY + 3);
+
+            // Connect worker nodes
+            const nodeCount = 12;
+            for (let i = 0; i < nodeCount; i++) {
+                const angle = (i / nodeCount) * Math.PI * 2 + topoAngle;
+                const nx = centerX + Math.cos(angle) * radius;
+                const ny = centerY + Math.sin(angle) * radius;
+
+                topoCtx.beginPath();
+                topoCtx.moveTo(centerX, centerY);
+                const controlX = (centerX + nx) / 2 + Math.sin(topoAngle * 2 + i) * 20;
+                const controlY = (centerY + ny) / 2 + Math.cos(topoAngle * 2 + i) * 20;
+                topoCtx.quadraticCurveTo(controlX, controlY, nx, ny);
+                topoCtx.strokeStyle = (i % 3 === 0) ? 'rgba(0, 240, 255, 0.35)' : 'rgba(99, 102, 241, 0.25)';
+                topoCtx.lineWidth = 1.5;
+                topoCtx.stroke();
+
+                topoCtx.beginPath();
+                topoCtx.arc(nx, ny, 8, 0, Math.PI * 2);
+                topoCtx.fillStyle = (i === 3) ? '#f59e0b' : '#10b981';
+                topoCtx.fill();
+
+                topoCtx.fillStyle = '#94a3b8';
+                topoCtx.font = '8px Share Tech Mono';
+                topoCtx.fillText(`node-${i+1}`, nx, ny + 16);
+            }
+
+            requestAnimationFrame(drawTopologyOverlay);
+        }
+        setTimeout(drawTopologyOverlay, 200);
+
+        /* ====================================================================
+           4. STREAMING_CHUNK:Rendering 100 VMs matrix grid and search filters...
+           ==================================================================== */
+        const matrixGrid = document.getElementById('vmMatrixGrid');
+        const searchInput = document.getElementById('vmSearchInput');
+        const statusFilter = document.getElementById('statusFilter');
+
+        function renderMatrix() {
+            if (!matrixGrid) return;
+            matrixGrid.innerHTML = '';
+            const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+            const filterVal = statusFilter ? statusFilter.value : 'all';
+
+            const filteredVMs = vmData.filter(vm => {
+                const matchesSearch = vm.name.toLowerCase().includes(searchTerm) || 
+                                      vm.ip.includes(searchTerm) ||
+                                      vm.services.some(s => s.name.toLowerCase().includes(searchTerm));
+                const matchesStatus = filterVal === 'all' || vm.status === filterVal;
+                return matchesSearch && matchesStatus;
+            });
+
+            filteredVMs.forEach(vm => {
+                const tile = document.createElement('button');
+                tile.className = `relative h-9 rounded border flex flex-col items-center justify-center transition-all duration-200 group p-1 ${
+                    vm.status === 'healthy' 
+                        ? 'bg-slate-900/80 border-slate-800 hover:border-cyan-500/60 hover:shadow-[0_0_10px_rgba(0,240,255,0.3)]' 
+                        : vm.status === 'warning'
+                        ? 'bg-amber-950/40 border-amber-600/50 hover:border-amber-400'
+                        : 'bg-red-950/60 border-red-500/80 hover:border-red-400 animate-pulse'
+                }`;
+
+                const statusColor = vm.status === 'healthy' ? 'bg-emerald-400' : vm.status === 'warning' ? 'bg-amber-400' : 'bg-red-500';
+
+                tile.innerHTML = `
+                    <span class="w-1.5 h-1.5 rounded-full ${statusColor} mb-0.5"></span>
+                    <span class="text-[9px] font-mono font-bold text-slate-300 group-hover:text-cyan-300 truncate w-full px-0.5 text-center">${vm.name.replace('vm-', '')}</span>
+                `;
+
+                tile.addEventListener('mouseenter', () => showQuickInspect(vm));
+                tile.addEventListener('click', () => openModal(vm));
+
+                matrixGrid.appendChild(tile);
+            });
+        }
+
+        function showQuickInspect(vm) {
+            const inspector = document.getElementById('inspectorContent');
+            if (!inspector) return;
+            inspector.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="status-dot ${vm.status}"></span>
+                    <span class="font-bold text-cyan-300">${vm.name}</span>
+                    <span class="text-slate-500">(${vm.ip})</span>
+                </div>
+                <div class="flex items-center gap-4 text-[11px]">
+                    <span>CPU: <strong class="${vm.cpu > 80 ? 'text-red-400' : 'text-slate-200'}">${vm.cpu}%</strong></span>
+                    <span>RAM: <strong class="text-slate-200">${vm.ramGb}/16GB</strong></span>
+                    <span>Services: <strong class="text-cyan-400">${vm.services.length} Active</strong></span>
+                </div>
+            `;
+        }
+
+        if (searchInput) searchInput.addEventListener('input', renderMatrix);
+        if (statusFilter) statusFilter.addEventListener('change', renderMatrix);
+        renderMatrix();
+
+        /* ====================================================================
+           5. STREAMING_CHUNK:Building modal details controller for VM drill-down...
+           ==================================================================== */
+        const modal = document.getElementById('detailModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        let activeVmForModal = null;
+
+        function openModal(vm) {
+            activeVmForModal = vm;
+            document.getElementById('modalVmTitle').innerText = vm.name;
+            document.getElementById('modalIp').innerText = vm.ip;
+            document.getElementById('modalCpu').innerText = vm.cpu + '%';
+            document.getElementById('modalCpuBar').style.width = vm.cpu + '%';
+            document.getElementById('modalRam').innerText = `${vm.ramGb} / ${vm.maxRam} GB`;
+            document.getElementById('modalRamBar').style.width = `${(vm.ramGb / vm.maxRam) * 100}%`;
+            document.getElementById('modalDisk').innerText = `${vm.diskMb} MB/s`;
+            document.getElementById('modalK8sNode').innerText = vm.k8sNode;
+
+            const statusDot = document.getElementById('modalStatusDot');
+            statusDot.className = `status-dot ${vm.status}`;
+
+            const servicesContainer = document.getElementById('modalServicesList');
+            servicesContainer.innerHTML = vm.services.map(s => `
+                <div class="p-2.5 bg-slate-900/90 rounded border border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <i class="fa-solid ${s.status === 'running' ? 'fa-circle-check text-emerald-400' : 'fa-circle-xmark text-red-500'}"></i>
+                        <div>
+                            <div class="font-bold text-slate-200">${s.name}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">Port: ${s.port} | Type: ${s.type}</div>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="px-2 py-0.5 rounded text-[10px] ${s.status === 'running' ? 'bg-emerald-950 text-emerald-300 border border-emerald-800/40' : 'bg-red-950 text-red-300 border border-red-800/40'}">
+                            ${s.status.toUpperCase()}
+                        </span>
+                        <div class="text-[10px] text-slate-400 mt-1">CPU: ${s.cpu}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            modal.classList.remove('hidden');
+        }
+
+        if (closeModalBtn) closeModalBtn.addEventListener('click', () => modal.classList.add('hidden'));
+        if (modal) {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.add('hidden');
+            });
+        }
+
+        /* ====================================================================
+           6. STREAMING_CHUNK:Configuring Chart.js Grafana time-series graphs...
+           ==================================================================== */
+        const ctxChart = document.getElementById('grafanaChart').getContext('2d');
+
+        const cyanGradient = ctxChart.createLinearGradient(0, 0, 0, 200);
+        cyanGradient.addColorStop(0, 'rgba(0, 240, 255, 0.4)');
+        cyanGradient.addColorStop(1, 'rgba(0, 240, 255, 0.0)');
+
+        const purpleGradient = ctxChart.createLinearGradient(0, 0, 0, 200);
+        purpleGradient.addColorStop(0, 'rgba(139, 92, 246, 0.4)');
+        purpleGradient.addColorStop(1, 'rgba(139, 92, 246, 0.0)');
+
+        const labels = Array.from({length: 20}, (_, i) => `${20 - i}m ago`).reverse();
+
+        const grafanaChart = new Chart(ctxChart, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Kubimetrics Cluster Pod CPU %',
+                        data: labels.map(() => Math.floor(Math.random() * 25 + 45)),
+                        borderColor: '#00f0ff',
+                        backgroundColor: cyanGradient,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                    },
+                    {
+                        label: '100 VMs Average CPU %',
+                        data: labels.map(() => Math.floor(Math.random() * 15 + 35)),
+                        borderColor: '#8b5cf6',
+                        backgroundColor: purpleGradient,
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.35,
+                        pointRadius: 0,
+                        pointHoverRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        titleColor: '#00f0ff',
+                        borderColor: 'rgba(0, 240, 255, 0.3)',
+                        borderWidth: 1,
+                        titleFont: { family: 'Orbitron', size: 11 },
+                        bodyFont: { family: 'Share Tech Mono', size: 10 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 9 } }
+                    },
+                    y: {
+                        min: 0,
+                        max: 100,
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: { 
+                            color: '#64748b', 
+                            font: { family: 'Share Tech Mono', size: 9 },
+                            callback: value => value + '%'
+                        }
+                    }
+                }
+            }
+        });
+
+        // UTC Clock Update
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('utcClock').innerText = now.toUTCString().split(' ')[4] + ' UTC';
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+    </script>
+</body>
+</html>
