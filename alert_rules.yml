@@ -1,0 +1,20 @@
+groups:
+  - name: simulated_alerts
+    rules:
+      - alert: HostHighCpuLoad
+        expr: vector(1)
+        for: 0m
+        labels:
+          severity: critical
+          alertname: HostHighCpuLoad
+        annotations:
+          summary: "CRITICAL: CPU Load on local node exceeded 95%"
+          description: "Node CPU utilization is critically high."
+      - alert: MemoryPressureWarning
+        expr: vector(1)
+        for: 0m
+        labels:
+          severity: warning
+          alertname: MemoryPressureWarning
+        annotations:
+          summary: "WARNING: High memory usage detected on host"
