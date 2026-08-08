@@ -2,6 +2,7 @@ package com.kubimetrics.dashboard.service;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.ExchangeFilterFunctions;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
@@ -12,10 +13,21 @@ public class PrometheusService {
 
     private final WebClient webClient;
 
-    public PrometheusService(@Value("${prometheus.url:http://localhost:9091}") String prometheusUrl) {
-        this.webClient = WebClient.builder()
-                .baseUrl(prometheusUrl)
-                .build();
+    public PrometheusService(
+            @Value("${prometheus.url:http://localhost:9091}") String prometheusUrl,
+            @Value("${prometheus.username:}") String username,
+            @Value("${prometheus.password:}") String password,
+            @Value("${prometheus.bearer-token:}") String bearerToken) {
+
+        WebClient.Builder builder = WebClient.builder().baseUrl(prometheusUrl);
+
+        if (username != null && !username.isBlank() && password != null && !password.isBlank()) {
+            builder.filter(ExchangeFilterFunctions.basicAuthentication(username, password));
+        } else if (bearerToken != null && !bearerToken.isBlank()) {
+            builder.defaultHeader("Authorization", "Bearer " + bearerToken.trim());
+        }
+
+        this.webClient = builder.build();
     }
 
     public Map<String, Object> queryMetrics(String query) {
