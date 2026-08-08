@@ -113,11 +113,13 @@ export default function App() {
               <i className="fa-solid fa-memory text-indigo-400"></i>
             </div>
             <div className="my-1 flex items-baseline justify-between">
-              <span className="font-orbitron text-2xl font-bold text-indigo-300">0.0 GB</span>
+              <span className="font-orbitron text-2xl font-bold text-indigo-300">
+                {summary?.ramUsageGb ?? 0.0} GB
+              </span>
               <span className="text-[10px] font-mono text-slate-400">Live</span>
             </div>
             <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-gradient-to-r from-indigo-500 to-purple-400 h-full" style={{ width: '0%' }}></div>
+              <div className="bg-gradient-to-r from-indigo-500 to-purple-400 h-full" style={{ width: `${Math.min(100, ((summary?.ramUsageGb ?? 0) / 16) * 100)}%` }}></div>
             </div>
           </div>
 
@@ -160,7 +162,7 @@ export default function App() {
             <GrafanaChart vms={vms} />
           </div>
           <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
-            <VmMatrixGrid vms={vms} onSelectVm={setSelectedVm} />
+            <VmMatrixGrid vms={vms} alerts={alerts} selectedVm={selectedVm} onSelectVm={setSelectedVm} />
           </div>
           <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
             <AlertsPanel alerts={alerts} onRefresh={fetchData} />

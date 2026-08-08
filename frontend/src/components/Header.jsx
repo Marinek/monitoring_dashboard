@@ -21,19 +21,14 @@ export const Header = ({ timeRange, setTimeRange, onRefresh, summary, vmCount })
                     <i className="fa-solid fa-cubes-stacked text-xl"></i>
                 </div>
                 <div>
-                    <div className="flex items-center gap-2">
-                        <h1 className="font-orbitron font-extrabold text-lg tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">
+                    <div className="flex items-center gap-3">
+                        <h1 className="font-orbitron font-black text-2xl tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-400">
                             KUBIMETRICS
                         </h1>
-                        <span className="px-2 py-0.5 text-[10px] font-mono tracking-widest uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-500/30 rounded-full">
+                        <span className="px-2.5 py-0.5 text-xs font-mono tracking-widest uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-500/40 rounded-full">
                             PROD-CLUSTER-01
                         </span>
                     </div>
-                    <p className="text-xs text-slate-400 font-mono flex items-center gap-2">
-                        <span><i className="fa-solid fa-network-wire text-cyan-400 text-[10px]"></i> {totalTargets} PROMETHEUS TARGETS</span>
-                        <span className="text-slate-600">•</span>
-                        <span><i className="fa-solid fa-microchip text-indigo-400 text-[10px]"></i> {onlineTargets} ONLINE</span>
-                    </p>
                 </div>
             </div>
 
