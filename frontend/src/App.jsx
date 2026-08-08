@@ -3,6 +3,7 @@ import { FiberCanvas } from './components/FiberCanvas';
 import { Header } from './components/Header';
 import { GrafanaChart } from './components/GrafanaChart';
 import { VmMatrixGrid } from './components/VmMatrixGrid';
+import { AlertsPanel } from './components/AlertsPanel';
 
 export default function App() {
   const [timeRange, setTimeRange] = useState('5m');
@@ -40,11 +41,13 @@ export default function App() {
     return () => clearInterval(interval);
   }, [timeRange]);
 
-  const onlineVms = summary?.onlineVms ?? 0;
-  const totalVms = summary?.totalVms ?? 0;
-  const clusterPods = summary?.clusterPods ?? 0;
+  const onlineVms = summary?.onlineVms ?? summary?.nodesOnline ?? 0;
+  const totalVms = summary?.totalVms ?? summary?.totalNodes ?? 0;
+  const clusterPods = summary?.clusterPods ?? totalVms;
   const avgCpuPercent = summary?.avgCpuPercent ?? 0;
   const meshTrafficGbps = summary?.meshTrafficGbps ?? 0;
+
+  const activeAlerts = alerts.filter(a => a.status !== 'ACKNOWLEDGED');
 
   return (
     <div className="scanlines text-slate-200 min-h-screen">
@@ -142,25 +145,29 @@ export default function App() {
             </div>
             <div className="my-1 flex items-center justify-between">
               <span className="font-orbitron text-2xl font-bold text-amber-400">
-                {alerts.length}
+                {activeAlerts.length}
               </span>
             </div>
             <div className="text-[10px] text-slate-400 font-mono truncate">
-              Status: <span className="text-emerald-400">{alerts.length === 0 ? 'No Active Alerts' : `${alerts.length} Alerts`}</span>
+              Status: <span className={activeAlerts.length === 0 ? 'text-emerald-400' : 'text-amber-400'}>{activeAlerts.length === 0 ? 'No Active Alerts' : `${activeAlerts.length} Active`}</span>
             </div>
           </div>
         </div>
 
-        {/* Split Grid */}
+        {/* Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
-          <div className="lg:col-span-7 flex flex-col gap-3 min-h-0">
+          <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
             <GrafanaChart vms={vms} />
           </div>
-          <div className="lg:col-span-5 flex flex-col gap-3 min-h-0">
+          <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
             <VmMatrixGrid vms={vms} onSelectVm={setSelectedVm} />
+          </div>
+          <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
+            <AlertsPanel alerts={alerts} onRefresh={fetchData} />
           </div>
         </div>
       </div>
     </div>
   );
 }
+

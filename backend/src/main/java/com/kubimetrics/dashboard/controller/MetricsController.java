@@ -1,6 +1,9 @@
 package com.kubimetrics.dashboard.controller;
 
+import com.kubimetrics.dashboard.model.AlertDTO;
+import com.kubimetrics.dashboard.service.AlertService;
 import com.kubimetrics.dashboard.service.PrometheusService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -11,9 +14,11 @@ import java.util.*;
 public class MetricsController {
 
     private final PrometheusService prometheusService;
+    private final AlertService alertService;
 
-    public MetricsController(PrometheusService prometheusService) {
+    public MetricsController(PrometheusService prometheusService, AlertService alertService) {
         this.prometheusService = prometheusService;
+        this.alertService = alertService;
     }
 
     @GetMapping("/metrics/summary")
@@ -28,60 +33,80 @@ public class MetricsController {
             int onlineCount = 0;
             for (Map<String, Object> metric : metricsResult) {
                 List<Object> value = (List<Object>) metric.get("value");
-                if (value != null && value.size() > 1 && "1".equals(String.valueOf(value.get(1)))) {
+                if (value != null && value.size() > 1 && "1".equals(value.get(1))) {
                     onlineCount++;
                 }
             }
-            int total = metricsResult.size();
-            result.put("onlineVms", onlineCount);
-            result.put("totalVms", total);
-            result.put("clusterPods", metricsResult.size());
-            result.put("podsReadyPercent", total > 0 ? (onlineCount * 100 / total) : 0);
-            result.put("workerNodes", total);
-            result.put("avgCpuPercent", 0);
-            result.put("meshTrafficGbps", 0);
-            result.put("activeAlertsCount", 0);
+            result.put("nodesOnline", onlineCount);
+            result.put("totalNodes", metricsResult.size());
+            result.put("status", "HEALTHY");
         } else {
-            result.put("onlineVms", 0);
-            result.put("totalVms", 0);
-            result.put("clusterPods", 0);
-            result.put("podsReadyPercent", 0);
-            result.put("workerNodes", 0);
-            result.put("avgCpuPercent", 0);
-            result.put("meshTrafficGbps", 0);
-            result.put("activeAlertsCount", 0);
+            result.put("nodesOnline", 0);
+            result.put("totalNodes", 0);
+            result.put("status", "UNHEALTHY");
         }
         return result;
     }
 
     @GetMapping("/vms")
-    public List<Map<String, Object>> getVms() {
-        Map<String, Object> promData = prometheusService.queryMetrics("up");
-        List<Map<String, Object>> vms = new ArrayList<>();
+    public List<Map<String, Object>> getVirtualMachines() {
+        Map<String, Object> upData = prometheusService.queryMetrics("up");
+        Map<String, Object> unameData = prometheusService.queryMetrics("node_uname_info");
+        List<AlertDTO> activeAlerts = alertService.getAlerts();
 
-        if (promData != null && "success".equals(promData.get("status"))) {
-            Map<String, Object> data = (Map<String, Object>) promData.get("data");
-            List<Map<String, Object>> metricsResult = data != null ? (List<Map<String, Object>>) data.get("result") : Collections.emptyList();
+        Map<String, Boolean> upStatusMap = new HashMap<>();
+        if (upData != null && "success".equals(upData.get("status"))) {
+            Map<String, Object> data = (Map<String, Object>) upData.get("data");
+            List<Map<String, Object>> result = data != null ? (List<Map<String, Object>>) data.get("result") : Collections.emptyList();
+            for (Map<String, Object> item : result) {
+                Map<String, Object> metric = (Map<String, Object>) item.get("metric");
+                List<Object> value = (List<Object>) item.get("value");
+                if (metric != null && metric.containsKey("instance")) {
+                    boolean isUp = value != null && value.size() > 1 && "1".equals(String.valueOf(value.get(1)));
+                    upStatusMap.put(String.valueOf(metric.get("instance")), isUp);
+                }
+            }
+        }
+
+        List<Map<String, Object>> vms = new ArrayList<>();
+        if (upData != null && "success".equals(upData.get("status"))) {
+            Map<String, Object> data = (Map<String, Object>) upData.get("data");
+            List<Map<String, Object>> result = data != null ? (List<Map<String, Object>>) data.get("result") : Collections.emptyList();
 
             int id = 1;
-            for (Map<String, Object> item : metricsResult) {
-                Map<String, Object> metricObj = (Map<String, Object>) item.get("metric");
-                List<Object> value = (List<Object>) item.get("value");
+            for (Map<String, Object> item : result) {
+                Map<String, Object> metricMeta = (Map<String, Object>) item.get("metric");
+                String instance = metricMeta != null ? String.valueOf(metricMeta.getOrDefault("instance", "target-" + id)) : "target-" + id;
+                String job = metricMeta != null ? String.valueOf(metricMeta.getOrDefault("job", "prometheus")) : "prometheus";
+                boolean isUp = upStatusMap.getOrDefault(instance, true);
 
-                String instance = metricObj != null && metricObj.containsKey("instance") ? String.valueOf(metricObj.get("instance")) : "target-" + id;
-                String job = metricObj != null && metricObj.containsKey("job") ? String.valueOf(metricObj.get("job")) : "unknown";
-                boolean isUp = value != null && value.size() > 1 && "1".equals(String.valueOf(value.get(1)));
+                // Check active alerts for this target / instance or global
+                boolean hasCritical = false;
+                boolean hasWarning = false;
+                for (AlertDTO a : activeAlerts) {
+                    if ("ACTIVE".equals(a.getStatus())) {
+                        if ("critical".equalsIgnoreCase(a.getSeverity())) {
+                            hasCritical = true;
+                        } else if ("warning".equalsIgnoreCase(a.getSeverity())) {
+                            hasWarning = true;
+                        }
+                    }
+                }
+
+                String status = "healthy";
+                if (!isUp || hasCritical) {
+                    status = "critical";
+                } else if (hasWarning) {
+                    status = "warning";
+                }
 
                 Map<String, Object> vm = new HashMap<>();
                 vm.put("id", id++);
-                vm.put("name", instance);
+                vm.put("name", instance.contains(":") ? instance.split(":")[0] : instance);
+                vm.put("instance", instance);
                 vm.put("ip", instance.split(":")[0]);
                 vm.put("role", job);
-                vm.put("status", isUp ? "healthy" : "critical");
-                vm.put("cpu", 0);
-                vm.put("ramGb", 0);
-                vm.put("maxRam", 16);
-                vm.put("diskMb", 0);
+                vm.put("status", status);
                 vm.put("k8sNode", job);
                 vms.add(vm);
             }
@@ -90,28 +115,22 @@ public class MetricsController {
     }
 
     @GetMapping("/alerts")
-    public List<Map<String, Object>> getAlerts() {
-        Map<String, Object> promAlerts = prometheusService.getAlerts();
-        List<Map<String, Object>> alertsList = new ArrayList<>();
+    public List<AlertDTO> getAlerts() {
+        return alertService.getAlerts();
+    }
 
-        if (promAlerts != null && "success".equals(promAlerts.get("status"))) {
-            Map<String, Object> data = (Map<String, Object>) promAlerts.get("data");
-            List<Map<String, Object>> alerts = data != null ? (List<Map<String, Object>>) data.get("alerts") : Collections.emptyList();
-
-            int id = 1;
-            for (Map<String, Object> alert : alerts) {
-                Map<String, Object> labels = (Map<String, Object>) alert.get("labels");
-                Map<String, Object> annotations = (Map<String, Object>) alert.get("annotations");
-
-                Map<String, Object> item = new HashMap<>();
-                item.put("id", id++);
-                item.put("severity", labels != null ? labels.getOrDefault("severity", "warning") : "warning");
-                item.put("title", annotations != null ? annotations.getOrDefault("summary", "Alert Active") : "Alert Active");
-                item.put("source", labels != null ? labels.getOrDefault("alertname", "Prometheus") : "Prometheus");
-                item.put("time", String.valueOf(alert.getOrDefault("activeAt", "now")));
-                alertsList.add(item);
-            }
+    @PostMapping("/alerts/{id}/acknowledge")
+    public ResponseEntity<Map<String, Object>> acknowledgeAlert(@PathVariable("id") String id) {
+        boolean success = alertService.acknowledgeAlert(id);
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", success);
+        response.put("alertId", id);
+        if (success) {
+            response.put("message", "Alert acknowledged successfully");
+            return ResponseEntity.ok(response);
+        } else {
+            response.put("message", "Failed to acknowledge alert");
+            return ResponseEntity.badRequest().body(response);
         }
-        return alertsList;
     }
 }
