@@ -4,6 +4,7 @@ import { Header } from './components/Header';
 import { GrafanaChart } from './components/GrafanaChart';
 import { VmMatrixGrid } from './components/VmMatrixGrid';
 import { AlertsPanel } from './components/AlertsPanel';
+import { TopologyPanel } from './components/TopologyPanel';
 
 export default function App() {
   const [timeRange, setTimeRange] = useState('5m');
@@ -159,6 +160,7 @@ export default function App() {
         {/* Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0">
           <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
+            <TopologyPanel vms={vms} summary={summary} />
             <GrafanaChart vms={vms} />
           </div>
           <div className="lg:col-span-4 flex flex-col gap-3 min-h-0">
